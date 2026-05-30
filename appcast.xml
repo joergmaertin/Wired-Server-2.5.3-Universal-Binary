@@ -88,5 +88,39 @@
         sparkle:edSignature="7XN6a3JNHrU36KSkbGaiBcSdRfDL4sVqDaOl64S+p/hxl9Alxj8LgQWwnwjHbVUr0ujYLxJ+vLXMsoYx9I/IAw==" sparkle:dsaSignature="MEYCIQDIbwtNy0vuIHi6q7aqs7qk/YJebKEaymu2mlxjQ20l0AIhANobdlyAULAhhYLaW5NdOaoigmC49G93GZq5Eg0ULkMq"/>
     </item>
 
+
+    <item>
+      <title>Wired Server 2.6.0</title>
+      <pubDate>Sa., 30 Mai 2026 15:59:55 +0000</pubDate>
+      <sparkle:releaseNotesLink>
+        https://github.com/martinmarsian/Wired-Server-Universal-Binary/releases/tag/v2.6.0
+      </sparkle:releaseNotesLink>
+      <sparkle:minimumSystemVersion>10.13</sparkle:minimumSystemVersion>
+      <enclosure
+        url="https://github.com/martinmarsian/Wired-Server-Universal-Binary/releases/download/v2.6.0/WiredServer-2.6.0.zip"
+        sparkle:version="40"
+        sparkle:shortVersionString="2.6.0"
+        type="application/zip"
+        length="14060419"
+        sparkle:edSignature="YvPvHu6x2XixMAryiBrTl3HEt/HasmXMung5sXIdBNOMmwD4d/2a6JfovpVkwuNZL+5xIO8Y3fRPJNx890O0CA==" sparkle:dsaSignature="MEQCIB50amCDXcHEC0Q32DlxIW77RWSX5iPA5WwXhjP3yoojAiAzGxAceTPt9upLkMdCaoL83M2/4V6a9Pjvyz/6zU1neg=="/>
+    </item>
+
+
+    <item>
+      <title>Wired Server 2.6.1</title>
+      <pubDate>Sa., 30 Mai 2026 16:49:06 +0000</pubDate>
+      <sparkle:releaseNotesLink>
+        https://github.com/martinmarsian/Wired-Server-Universal-Binary/releases/tag/v2.6.1
+      </sparkle:releaseNotesLink>
+      <sparkle:minimumSystemVersion>10.13</sparkle:minimumSystemVersion>
+      <enclosure
+        url="https://github.com/martinmarsian/Wired-Server-Universal-Binary/releases/download/v2.6.1/WiredServer-2.6.1.zip"
+        sparkle:version="41"
+        sparkle:shortVersionString="2.6.1"
+        type="application/zip"
+        length="14060441"
+        sparkle:edSignature="pHDecrqz6N77ZMNgHB3KwVGz68aGwRRvaYYwQK33wZjkr/ob/fVzKZChUvb6ILiLV0822Z0BxJ/6hqCFILwRAQ==" sparkle:dsaSignature="MEUCIDKExHOpg1MicZgXUzUxtJPKWOWtEm9z7MW+TVv8M2P8AiEAuGC/doT9y6Eehx6TrjBZ9BTlekTUl3/T1+OmLb1TUqU="/>
+    </item>
+
   </channel>
 </rss>
