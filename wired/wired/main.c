@@ -463,14 +463,69 @@ static void wd_database_open(void) {
 														 "id INTEGER PRIMARY KEY AUTOINCREMENT, "
 														 "sender_login TEXT NOT NULL, "
 														 "sender_nick TEXT NOT NULL, "
+														 "sender_token TEXT NOT NULL DEFAULT '', "
 														 "recipient_login TEXT NOT NULL, "
 														 "message TEXT NOT NULL, "
-														 "sent_at TEXT NOT NULL DEFAULT (DATETIME('now')), "
+														 "message_ciphertext BLOB DEFAULT NULL, "
+														 "sent_at TEXT NOT NULL DEFAULT (STRFTIME('%Y-%m-%dT%H:%M:%f', 'now')), "
 														 "delivered_at TEXT DEFAULT NULL"
 														 ")"),
 									 NULL)) {
 		wi_log_fatal(WI_STR("Could not execute database statement: %m"));
 	}
+
+	/* Add sender_token column to existing tables that predate schema version 1 */
+	if(wd_database_version_for_table(WI_STR("pending_messages")) < 1) {
+		wi_sqlite3_execute_statement(wd_database,
+			WI_STR("ALTER TABLE pending_messages ADD COLUMN sender_token TEXT NOT NULL DEFAULT ''"),
+			NULL);
+		wd_database_set_version_for_table(1, WI_STR("pending_messages"));
+	}
+
+	/* Add message_ciphertext column for E2E-encrypted offline messages (schema version 2) */
+	if(wd_database_version_for_table(WI_STR("pending_messages")) < 2) {
+		wi_sqlite3_execute_statement(wd_database,
+			WI_STR("ALTER TABLE pending_messages ADD COLUMN message_ciphertext BLOB DEFAULT NULL"),
+			NULL);
+		wd_database_set_version_for_table(2, WI_STR("pending_messages"));
+	}
+
+	if(!wi_sqlite3_execute_statement(wd_database, WI_STR("CREATE TABLE IF NOT EXISTS offline_keys ( "
+														 "login TEXT PRIMARY KEY NOT NULL, "
+														 "public_key BLOB NOT NULL "
+														 ")"),
+									 NULL)) {
+		wi_log_fatal(WI_STR("Could not execute database statement: %m"));
+	}
+
+	if(!wi_sqlite3_execute_statement(wd_database, WI_STR("CREATE TABLE IF NOT EXISTS offline_tokens ( "
+														 "login TEXT PRIMARY KEY NOT NULL, "
+														 "token TEXT NOT NULL, "
+														 "nick TEXT NOT NULL DEFAULT '', "
+														 "status TEXT NOT NULL DEFAULT '', "
+														 "icon BLOB "
+														 ")"),
+									 NULL)) {
+		wi_log_fatal(WI_STR("Could not execute database statement: %m"));
+	}
+
+	/* Add profile columns to existing offline_tokens tables */
+	if(wd_database_version_for_table(WI_STR("offline_tokens")) < 1) {
+		wi_sqlite3_execute_statement(wd_database,
+			WI_STR("ALTER TABLE offline_tokens ADD COLUMN nick TEXT NOT NULL DEFAULT ''"), NULL);
+		wi_sqlite3_execute_statement(wd_database,
+			WI_STR("ALTER TABLE offline_tokens ADD COLUMN status TEXT NOT NULL DEFAULT ''"), NULL);
+		wi_sqlite3_execute_statement(wd_database,
+			WI_STR("ALTER TABLE offline_tokens ADD COLUMN icon BLOB"), NULL);
+		wd_database_set_version_for_table(1, WI_STR("offline_tokens"));
+	}
+
+	/* Prune messages delivered more than 30 days ago */
+	wi_sqlite3_execute_statement(wd_database,
+		WI_STR("DELETE FROM pending_messages "
+		       "WHERE delivered_at IS NOT NULL "
+		       "AND delivered_at < STRFTIME('%Y-%m-%dT%H:%M:%f', 'now', '-30 days')"),
+		NULL);
 }
 
 

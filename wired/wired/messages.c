@@ -69,6 +69,7 @@ static void							wd_message_chat_decline_invitation(wd_user_t *, wi_p7_message_
 static void							wd_message_chat_kick_user(wd_user_t *, wi_p7_message_t *);
 static void							wd_message_message_send_message(wd_user_t *, wi_p7_message_t *);
 static void							wd_message_message_send_offline_message(wd_user_t *, wi_p7_message_t *);
+static void							wd_message_message_set_offline_public_key(wd_user_t *, wi_p7_message_t *);
 static void							wd_message_message_send_broadcast(wd_user_t *, wi_p7_message_t *);
 static void							wd_message_board_get_boards(wd_user_t *, wi_p7_message_t *);
 static void							wd_message_board_get_threads(wd_user_t *, wi_p7_message_t *);
@@ -139,6 +140,55 @@ static void							wd_message_tracker_send_update(wd_user_t *, wi_p7_message_t *)
 
 static wi_mutable_dictionary_t		*wd_message_handlers;
 
+static wi_string_t *wd_messages_token_for_login(wi_string_t *login) {
+	wi_dictionary_t		*result;
+	wi_string_t			*token;
+
+	result = wi_sqlite3_execute_statement(wd_database,
+		WI_STR("SELECT token FROM offline_tokens WHERE login = ?"),
+		login, NULL);
+
+	if(result && wi_dictionary_count(result) > 0)
+		return wi_dictionary_data_for_key(result, WI_STR("token"));
+
+	token = wi_uuid_string(wi_uuid());
+
+	wi_sqlite3_execute_statement(wd_database,
+		WI_STR("INSERT OR IGNORE INTO offline_tokens (login, token) VALUES (?, ?)"),
+		login, token, NULL);
+
+	return token;
+}
+
+static void wd_messages_save_user_profile(wd_user_t *user) {
+	wi_string_t		*login, *nick, *status;
+	wi_data_t		*icon;
+
+	login = wd_user_login(user);
+	if(!login || wi_string_length(login) == 0)
+		return;
+
+	/* Ensure token entry exists before updating profile columns */
+	wd_messages_token_for_login(login);
+
+	nick   = wd_user_nick(user);
+	status = wd_user_status(user);
+	icon   = wd_user_icon(user);
+
+	if(status && wi_string_length(status) > 128)
+		status = wi_string_substring_to_index(status, 128);
+	if(icon && wi_data_length(icon) > 16384)
+		icon = NULL;
+
+	wi_sqlite3_execute_statement(wd_database,
+		WI_STR("UPDATE offline_tokens SET nick = ?, status = ?, icon = ? WHERE login = ?"),
+		nick   ? nick   : WI_STR(""),
+		status ? status : WI_STR(""),
+		icon   ? (wi_runtime_instance_t *)icon : (wi_runtime_instance_t *)wi_null(),
+		login,
+		NULL);
+}
+
 
 
 #define WD_MESSAGE_HANDLER(message, handler) \
@@ -171,6 +221,7 @@ void wd_messages_initialize(void) {
 	WD_MESSAGE_HANDLER(WI_STR("wired.chat.kick_user"), wd_message_chat_kick_user);
 	WD_MESSAGE_HANDLER(WI_STR("wired.message.send_message"), wd_message_message_send_message);
 	WD_MESSAGE_HANDLER(WI_STR("wired.message.send_offline_message"), wd_message_message_send_offline_message);
+	WD_MESSAGE_HANDLER(WI_STR("wired.message.set_offline_public_key"), wd_message_message_set_offline_public_key);
 	WD_MESSAGE_HANDLER(WI_STR("wired.message.send_broadcast"), wd_message_message_send_broadcast);
 	WD_MESSAGE_HANDLER(WI_STR("wired.board.get_boards"), wd_message_board_get_boards);
 	WD_MESSAGE_HANDLER(WI_STR("wired.board.get_threads"), wd_message_board_get_threads);
@@ -310,8 +361,10 @@ void wd_messages_loop_for_user(wd_user_t *user) {
 		wd_current_users--;
 		wd_write_status(true);
 		wi_lock_unlock(wd_status_lock);
+
+		wd_messages_save_user_profile(user);
 	}
-	
+
 	wd_user_set_state(user, WD_USER_DISCONNECTED);
 
 	if(wd_chat_contains_user(wd_public_chat, user))
@@ -495,57 +548,111 @@ static void wd_message_send_login(wd_user_t *user, wi_p7_message_t *message) {
 		wi_sqlite3_statement_t	*statement;
 		wi_dictionary_t			*row;
 		wi_p7_message_t			*pending;
-		wi_string_t				*sender_nick, *msg_text, *row_id;
+		wi_string_t				*sender_nick, *sender_token, *sender_login, *msg_text, *row_id;
+		wi_runtime_instance_t	*ciphertext_val;
+		wi_data_t				*msg_ciphertext;
+		wi_mutable_array_t		*delivered_ids;
+
+		delivered_ids = wi_array_init(wi_mutable_array_alloc());
+
+		wi_sqlite3_execute_statement(wd_database, WI_STR("BEGIN EXCLUSIVE"), NULL);
 
 		statement = wi_sqlite3_prepare_statement(wd_database,
-			WI_STR("SELECT id, sender_nick, message FROM pending_messages "
+			WI_STR("SELECT id, sender_login, sender_nick, sender_token, message, message_ciphertext "
+			       "FROM pending_messages "
 			       "WHERE recipient_login = ? AND delivered_at IS NULL "
 			       "ORDER BY sent_at ASC"),
 			login, NULL);
 
 		if(statement) {
 			while((row = wi_sqlite3_fetch_statement_results(wd_database, statement)) && wi_dictionary_count(row) > 0) {
-				row_id      = wi_dictionary_data_for_key(row, WI_STR("id"));
-				sender_nick = wi_dictionary_data_for_key(row, WI_STR("sender_nick"));
-				msg_text    = wi_dictionary_data_for_key(row, WI_STR("message"));
+				row_id         = wi_dictionary_data_for_key(row, WI_STR("id"));
+				sender_login   = wi_dictionary_data_for_key(row, WI_STR("sender_login"));
+				sender_nick    = wi_dictionary_data_for_key(row, WI_STR("sender_nick"));
+				sender_token   = wi_dictionary_data_for_key(row, WI_STR("sender_token"));
+				msg_text       = wi_dictionary_data_for_key(row, WI_STR("message"));
+				ciphertext_val = wi_dictionary_data_for_key(row, WI_STR("message_ciphertext"));
+				msg_ciphertext = (ciphertext_val && wi_runtime_id(ciphertext_val) == wi_data_runtime_id())
+				                 ? (wi_data_t *)ciphertext_val : NULL;
+
+				/* Migrate old rows that predate the token column */
+				if(!sender_token || wi_string_length(sender_token) == 0)
+					sender_token = sender_login ? wd_messages_token_for_login(sender_login) : WI_STR("");
 
 				pending = wi_p7_message_with_name(WI_STR("wired.message.offline_message_delivered"), wd_p7_spec);
-				wi_p7_message_set_string_for_name(pending, sender_nick, WI_STR("wired.message.offline_sender_nick"));
-				wi_p7_message_set_string_for_name(pending, msg_text, WI_STR("wired.message.message"));
+				wi_p7_message_set_string_for_name(pending, sender_nick,  WI_STR("wired.message.offline_sender_nick"));
+				wi_p7_message_set_string_for_name(pending, sender_token, WI_STR("wired.message.offline_sender_token"));
+				wi_p7_message_set_string_for_name(pending, msg_text,     WI_STR("wired.message.message"));
+				if(msg_ciphertext && wi_data_length(msg_ciphertext) > 0)
+					wi_p7_message_set_data_for_name(pending, msg_ciphertext, WI_STR("wired.message.offline_message_ciphertext"));
 				wd_user_send_message(user, pending);
 
-				wi_sqlite3_execute_statement(wd_database,
-					WI_STR("UPDATE pending_messages SET delivered_at = DATETIME('now') WHERE id = ?"),
-					row_id, NULL);
+				wi_mutable_array_add_data(delivered_ids, wi_retain(row_id));
 			}
 		}
+
+		{
+			wi_enumerator_t		*enumerator;
+			wi_string_t			*rid;
+
+			enumerator = wi_array_data_enumerator(delivered_ids);
+			while((rid = wi_enumerator_next_data(enumerator))) {
+				wi_sqlite3_execute_statement(wd_database,
+					WI_STR("DELETE FROM pending_messages WHERE id = ?"),
+					rid, NULL);
+			}
+		}
+
+		wi_sqlite3_execute_statement(wd_database, WI_STR("COMMIT"), NULL);
+
+		wi_release(delivered_ids);
 	}
 
-	/* Send recently-active users (logged in within last 30 days) so clients can
-	   populate their offline-user cache without requiring admin privileges. */
+	/* Send recently-active users (logged in within last 30 days) using opaque tokens
+	   instead of logins so clients can populate their offline-user cache without
+	   exposing account login names. Profile data (nick, status, icon) is included
+	   so clients can display a rich offline entry without any login exposure. */
 	{
 		wi_sqlite3_statement_t	*ku_statement;
 		wi_dictionary_t			*ku_row;
 		wi_p7_message_t			*ku_msg;
-		wi_string_t				*ku_name, *ku_full_name;
+		wi_string_t				*ku_name, *ku_nick, *ku_status, *ku_token;
+		wi_runtime_instance_t	*ku_icon_val, *ku_pubkey_val;
+		wi_data_t				*ku_icon, *ku_pubkey;
 
 		ku_statement = wi_sqlite3_prepare_statement(wd_database,
-			WI_STR("SELECT name, full_name FROM users "
-			       "WHERE login_time >= DATETIME('now', '-30 days') AND name != ?"),
+			WI_STR("SELECT u.name, "
+			       "  COALESCE(NULLIF(ot.nick,''), u.full_name, u.name) AS display_nick, "
+			       "  COALESCE(ot.status,'') AS status, "
+			       "  ot.icon, "
+			       "  ok.public_key "
+			       "FROM users u "
+			       "LEFT JOIN offline_tokens ot ON ot.login = u.name "
+			       "LEFT JOIN offline_keys    ok ON ok.login = u.name "
+			       "WHERE u.login_time >= DATETIME('now', '-30 days') AND u.name != ?"),
 			login, NULL);
 
 		if(ku_statement) {
 			while((ku_row = wi_sqlite3_fetch_statement_results(wd_database, ku_statement)) && wi_dictionary_count(ku_row) > 0) {
-				ku_name      = wi_dictionary_data_for_key(ku_row, WI_STR("name"));
-				ku_full_name = wi_dictionary_data_for_key(ku_row, WI_STR("full_name"));
+				ku_name       = wi_dictionary_data_for_key(ku_row, WI_STR("name"));
+				ku_nick       = wi_dictionary_data_for_key(ku_row, WI_STR("display_nick"));
+				ku_status     = wi_dictionary_data_for_key(ku_row, WI_STR("status"));
+				ku_icon_val   = wi_dictionary_data_for_key(ku_row, WI_STR("icon"));
+				ku_pubkey_val = wi_dictionary_data_for_key(ku_row, WI_STR("public_key"));
+				ku_icon       = (ku_icon_val   && wi_runtime_id(ku_icon_val)   == wi_data_runtime_id()) ? (wi_data_t *)ku_icon_val   : NULL;
+				ku_pubkey     = (ku_pubkey_val && wi_runtime_id(ku_pubkey_val) == wi_data_runtime_id()) ? (wi_data_t *)ku_pubkey_val : NULL;
 
-				/* Fall back to login name if no display name is set */
-				if(!ku_full_name || wi_string_length(ku_full_name) == 0)
-					ku_full_name = ku_name;
+				ku_token = wd_messages_token_for_login(ku_name);
 
 				ku_msg = wi_p7_message_with_name(WI_STR("wired.user.known_users"), wd_p7_spec);
-				wi_p7_message_set_string_for_name(ku_msg, ku_name, WI_STR("wired.user.login"));
-				wi_p7_message_set_string_for_name(ku_msg, ku_full_name, WI_STR("wired.user.nick"));
+				wi_p7_message_set_string_for_name(ku_msg, ku_token, WI_STR("wired.message.offline_sender_token"));
+				wi_p7_message_set_string_for_name(ku_msg, ku_nick,  WI_STR("wired.user.nick"));
+				if(ku_status && wi_string_length(ku_status) > 0)
+					wi_p7_message_set_string_for_name(ku_msg, ku_status, WI_STR("wired.user.status"));
+				if(ku_icon && wi_data_length(ku_icon) > 0)
+					wi_p7_message_set_data_for_name(ku_msg, ku_icon, WI_STR("wired.user.icon"));
+				if(ku_pubkey && wi_data_length(ku_pubkey) > 0)
+					wi_p7_message_set_data_for_name(ku_msg, ku_pubkey, WI_STR("wired.message.offline_public_key"));
 				wd_user_send_message(user, ku_msg);
 			}
 		}
@@ -1159,30 +1266,113 @@ static void wd_message_message_send_message(wd_user_t *user, wi_p7_message_t *me
 
 
 
-static void wd_message_message_send_offline_message(wd_user_t *user, wi_p7_message_t *message) {
-	wi_string_t		*recipient_login, *msg_text;
+static void wd_message_message_set_offline_public_key(wd_user_t *user, wi_p7_message_t *message) {
+	wi_data_t	*public_key;
+	wi_string_t	*login;
 
 	if(!wd_account_message_send_messages(wd_user_account(user))) {
 		wd_user_reply_error(user, WI_STR("wired.error.permission_denied"), message);
 		return;
 	}
 
-	recipient_login = wi_p7_message_string_for_name(message, WI_STR("wired.message.offline_recipient"));
+	public_key = wi_p7_message_data_for_name(message, WI_STR("wired.message.offline_public_key"));
+	if(!public_key || wi_data_length(public_key) == 0) {
+		wd_user_reply_error(user, WI_STR("wired.error.invalid_message"), message);
+		return;
+	}
+	if(wi_data_length(public_key) > 1024) {
+		wd_user_reply_error(user, WI_STR("wired.error.invalid_message"), message);
+		return;
+	}
+
+	login = wd_user_login(user);
+
+	wi_sqlite3_execute_statement(wd_database,
+		WI_STR("INSERT OR REPLACE INTO offline_keys (login, public_key) VALUES (?, ?)"),
+		login, public_key, NULL);
+
+	wd_user_reply_okay(user, message);
+}
+
+
+
+static void wd_message_message_send_offline_message(wd_user_t *user, wi_p7_message_t *message) {
+	wi_string_t		*recipient_token, *recipient_login, *msg_text, *sender_token;
+	wi_data_t		*msg_ciphertext;
+	wi_dictionary_t	*token_row, *count_row;
+	wi_number_t		*count_num;
+
+	if(!wd_account_message_send_messages(wd_user_account(user))) {
+		wd_user_reply_error(user, WI_STR("wired.error.permission_denied"), message);
+		return;
+	}
+
+	recipient_token = wi_p7_message_string_for_name(message, WI_STR("wired.message.offline_recipient_token"));
 	msg_text        = wi_p7_message_string_for_name(message, WI_STR("wired.message.message"));
 
-	/* Verify the recipient account exists */
-	if(!wd_accounts_read_user(recipient_login)) {
-		wd_user_reply_error(user, WI_STR("wired.error.account_not_found"), message);
+	if(recipient_token && wi_string_length(recipient_token) > 0) {
+		/* New clients: resolve token → login (login never leaves the server) */
+		token_row = wi_sqlite3_execute_statement(wd_database,
+			WI_STR("SELECT login FROM offline_tokens WHERE token = ?"),
+			recipient_token, NULL);
+
+		if(!token_row || wi_dictionary_count(token_row) == 0) {
+			wd_user_reply_error(user, WI_STR("wired.error.account_not_found"), message);
+			return;
+		}
+
+		recipient_login = wi_dictionary_data_for_key(token_row, WI_STR("login"));
+	} else {
+		/* Legacy clients: accept plain login directly, convert to token on the way in */
+		wi_string_t *legacy_login = wi_p7_message_string_for_name(message, WI_STR("wired.message.offline_recipient"));
+
+		if(!legacy_login || wi_string_length(legacy_login) == 0) {
+			wd_user_reply_error(user, WI_STR("wired.error.invalid_message"), message);
+			return;
+		}
+
+		if(!wd_accounts_read_user(legacy_login)) {
+			wd_user_reply_error(user, WI_STR("wired.error.account_not_found"), message);
+			return;
+		}
+
+		recipient_login = legacy_login;
+		recipient_token = wd_messages_token_for_login(legacy_login);
+	}
+
+	/* Enforce per-recipient message limit */
+	count_row = wi_sqlite3_execute_statement(wd_database,
+		WI_STR("SELECT COUNT(*) AS cnt FROM pending_messages "
+		       "WHERE recipient_login = ? AND delivered_at IS NULL"),
+		recipient_login, NULL);
+
+	if(count_row && wi_dictionary_count(count_row) > 0) {
+		count_num = wi_dictionary_data_for_key(count_row, WI_STR("cnt"));
+		if(count_num && wi_number_integer(count_num) >= 50) {
+			wd_user_reply_error(user, WI_STR("wired.error.internal_error"), message);
+			return;
+		}
+	}
+
+	sender_token   = wd_messages_token_for_login(wd_user_login(user));
+	msg_ciphertext = wi_p7_message_data_for_name(message, WI_STR("wired.message.offline_message_ciphertext"));
+	if(msg_ciphertext && wi_data_length(msg_ciphertext) == 0)
+		msg_ciphertext = NULL;
+	if(msg_ciphertext && wi_data_length(msg_ciphertext) > 65536) {
+		wd_user_reply_error(user, WI_STR("wired.error.invalid_message"), message);
 		return;
 	}
 
 	if(!wi_sqlite3_execute_statement(wd_database,
-		WI_STR("INSERT INTO pending_messages (sender_login, sender_nick, recipient_login, message) "
-		       "VALUES (?, ?, ?, ?)"),
+		WI_STR("INSERT INTO pending_messages "
+		       "(sender_login, sender_nick, sender_token, recipient_login, message, message_ciphertext, sent_at) "
+		       "VALUES (?, ?, ?, ?, ?, ?, STRFTIME('%Y-%m-%dT%H:%M:%f', 'now'))"),
 		wd_user_login(user),
 		wd_user_nick(user),
+		sender_token,
 		recipient_login,
 		msg_text,
+		msg_ciphertext ? (wi_runtime_instance_t *)msg_ciphertext : (wi_runtime_instance_t *)wi_null(),
 		NULL)) {
 		wi_log_error(WI_STR("Could not store offline message: %m"));
 		wd_user_reply_error(user, WI_STR("wired.error.internal_error"), message);
@@ -1192,7 +1382,7 @@ static void wd_message_message_send_offline_message(wd_user_t *user, wi_p7_messa
 	wd_user_reply_okay(user, message);
 
 	wd_events_add_event(WI_STR("wired.event.message.sent"), user,
-		recipient_login, NULL);
+		wd_user_nick(user), NULL);
 }
 
 
