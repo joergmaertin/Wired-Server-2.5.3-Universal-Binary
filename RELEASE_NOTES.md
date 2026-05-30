@@ -1,5 +1,93 @@
 # Wired Server — Release Notes
 
+## Version 2.6.1 (Build 41)
+
+### Bug Fixes
+
+---
+
+### Backward Compatibility with Pre-2.6 Clients
+
+Old Wired Client binaries compiled before the 2.6 protocol update can now connect to the server again. Two P7 spec corrections in `wired.xml` restore compatibility:
+
+- **`wired.message.offline_sender_token`** in `wired.message.offline_message_delivered` — marked optional. Clients compiled before this field was introduced do not include it in their spec; the server's compatibility check was incorrectly requiring it and rejecting the connection.
+- **`wired.message.offline_recipient`** in `wired.message.send_offline_message` — restored as required. Pre-2.6 clients declare this field as required; a previous change made it optional on the server side, causing the *client-side* compatibility check to fail with a "peer has it optional" error.
+
+Both changes are backward-compatible: new clients that include `offline_sender_token` continue to work as before, and no server behaviour changes.
+
+---
+
+### Upgrading from 2.6.0
+
+No migration required. Sparkle will offer the update automatically.
+
+---
+
+## Version 2.6.0 (Build 40)
+
+### What's New
+
+---
+
+### Token-Based Privacy for Offline Messaging
+
+Offline messaging has been extended with a token-based identity model that avoids exposing login names in transit:
+
+- Each user is identified by a server-assigned **token** (`wired.user.offline_token`) rather than their login name
+- The server sends the full list of known (recently active) users as token/nick/status/icon tuples after login via `wired.user.known_users` (id 3011), followed by a `wired.user.known_users.done` (id 3012) signal
+- Offline messages reference the recipient by token (`wired.message.offline_recipient_token`), keeping login names off the wire
+
+The previous login-name-based `wired.message.offline_recipient` field is retained for compatibility with pre-2.6 clients.
+
+---
+
+### End-to-End Encryption Infrastructure
+
+The protocol now includes the fields necessary for end-to-end encrypted offline messages:
+
+- **`wired.message.offline_public_key`** (field id 5006) — included in `wired.user.known_users` entries and offline message delivery. Clients that support E2E messaging register their RSA-2048 public key via `wired.message.set_offline_public_key` (id 5006); the server stores and distributes it to senders.
+- **`wired.message.offline_message_ciphertext`** — carries the AES-GCM–wrapped ciphertext when E2E encryption is used. Plain-text messages (from clients that do not support encryption) continue to use `wired.message.message` as before.
+
+The server is encryption-transparent: it stores and forwards whatever the client provides and never attempts to decrypt message content.
+
+---
+
+### Protocol Changes
+
+| Field | ID | Type | Description |
+|---|---|---|---|
+| `wired.user.offline_token` | 207 | string | Server-assigned token for offline identity |
+| `wired.message.offline_recipient_token` | 5001 | string | Token of the intended offline recipient |
+| `wired.message.offline_sender_token` | 5007 | string | Token of the sender (delivered to recipient) |
+| `wired.message.offline_public_key` | 5006 | data | RSA-2048 public key (DER) of a user |
+| `wired.message.offline_message_ciphertext` | 5008 | data | AES-GCM–encrypted message body |
+
+| Message | ID | Direction | Description |
+|---|---|---|---|
+| `wired.user.known_users` | 3011 | server → client | One entry per recently active user |
+| `wired.user.known_users.done` | 3012 | server → client | Signals end of known-users list |
+| `wired.message.set_offline_public_key` | 5006 | client → server | Register client's RSA public key |
+
+Protocol version bumped from `2.5` to `2.6`. Old clients (announcing `2.0b55`) trigger the P7 compatibility check, which merges both specs — all new message and field IDs are added to the merged spec, so old clients can parse (and silently ignore) new broadcasts.
+
+---
+
+### System Requirements
+
+| | |
+|---|---|
+| **macOS** | 13.0 Ventura or later |
+| **Architecture** | Universal (Apple Silicon + Intel) |
+| **Privileges** | Administrator password required for Install / Start / Stop |
+
+---
+
+### Upgrading from 2.5.8
+
+No migration required. Sparkle will offer the update automatically.
+
+---
+
 ## Version 2.5.8
 
 ### What's New
