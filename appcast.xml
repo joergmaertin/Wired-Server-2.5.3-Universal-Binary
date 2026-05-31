@@ -108,18 +108,18 @@
 
     <item>
       <title>Wired Server 2.6.1</title>
-      <pubDate>Sa., 30 Mai 2026 16:49:06 +0000</pubDate>
+      <pubDate>So., 31 Mai 2026 07:58:56 +0000</pubDate>
       <sparkle:releaseNotesLink>
-        https://github.com/martinmarsian/Wired-Server-Universal-Binary/releases/tag/v2.6.1
+        https://github.com/martinmarsian/Wired-Server-Universal-Binary/releases/tag/v2.6.1.41
       </sparkle:releaseNotesLink>
       <sparkle:minimumSystemVersion>10.13</sparkle:minimumSystemVersion>
       <enclosure
-        url="https://github.com/martinmarsian/Wired-Server-Universal-Binary/releases/download/v2.6.1/WiredServer-2.6.1.zip"
+        url="https://github.com/martinmarsian/Wired-Server-Universal-Binary/releases/download/v2.6.1.41/WiredServer-2.6.1.zip"
         sparkle:version="41"
         sparkle:shortVersionString="2.6.1"
         type="application/zip"
-        length="14060441"
-        sparkle:edSignature="pHDecrqz6N77ZMNgHB3KwVGz68aGwRRvaYYwQK33wZjkr/ob/fVzKZChUvb6ILiLV0822Z0BxJ/6hqCFILwRAQ==" sparkle:dsaSignature="MEUCIDKExHOpg1MicZgXUzUxtJPKWOWtEm9z7MW+TVv8M2P8AiEAuGC/doT9y6Eehx6TrjBZ9BTlekTUl3/T1+OmLb1TUqU="/>
+        length="14060455"
+        sparkle:edSignature="MRZwMl/hMO/QXMGvJvarI1/B2QDHSYGkQy4pQUa2yCqocsxlqO5ma/FqeNLifij7c/75RAf02FP5CSwXzM7+Cg==" sparkle:dsaSignature="MEUCIQDUSEMGoKF6K7BxZ/VsEYSJvbStbVOw2H8CVg1QPc+lagIgUuus5Pr3wT2yC6gQwrOD/dp6YLsOO/xWFnfHIoh3vNk="/>
     </item>
 
   </channel>
