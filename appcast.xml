@@ -71,7 +71,6 @@
         sparkle:edSignature="bO5CvphH4gHGzrNFZfUKFZm221YK6hVv7Ft5NuZ+qJu/VSsI/XmoDqTdRatO+OIW+Y21gGxjQGMwT4tIIr7wCQ=="/>
     </item>
 
-
     <item>
       <title>Wired Server 2.5.8</title>
       <pubDate>Sa., 18 Apr. 2026 06:45:14 +0000</pubDate>
@@ -87,7 +86,6 @@
         length="14727606"
         sparkle:edSignature="7XN6a3JNHrU36KSkbGaiBcSdRfDL4sVqDaOl64S+p/hxl9Alxj8LgQWwnwjHbVUr0ujYLxJ+vLXMsoYx9I/IAw==" sparkle:dsaSignature="MEYCIQDIbwtNy0vuIHi6q7aqs7qk/YJebKEaymu2mlxjQ20l0AIhANobdlyAULAhhYLaW5NdOaoigmC49G93GZq5Eg0ULkMq"/>
     </item>
-
 
     <item>
       <title>Wired Server 2.6.0</title>
@@ -105,7 +103,6 @@
         sparkle:edSignature="YvPvHu6x2XixMAryiBrTl3HEt/HasmXMung5sXIdBNOMmwD4d/2a6JfovpVkwuNZL+5xIO8Y3fRPJNx890O0CA==" sparkle:dsaSignature="MEQCIB50amCDXcHEC0Q32DlxIW77RWSX5iPA5WwXhjP3yoojAiAzGxAceTPt9upLkMdCaoL83M2/4V6a9Pjvyz/6zU1neg=="/>
     </item>
 
-
     <item>
       <title>Wired Server 2.6.1</title>
       <pubDate>So., 31 Mai 2026 07:58:56 +0000</pubDate>
@@ -120,6 +117,22 @@
         type="application/zip"
         length="14060455"
         sparkle:edSignature="MRZwMl/hMO/QXMGvJvarI1/B2QDHSYGkQy4pQUa2yCqocsxlqO5ma/FqeNLifij7c/75RAf02FP5CSwXzM7+Cg==" sparkle:dsaSignature="MEUCIQDUSEMGoKF6K7BxZ/VsEYSJvbStbVOw2H8CVg1QPc+lagIgUuus5Pr3wT2yC6gQwrOD/dp6YLsOO/xWFnfHIoh3vNk="/>
+    </item>
+
+    <item>
+      <title>Wired Server 2.6.1</title>
+      <pubDate>So., 07 Juni 2026 16:48:45 +0000</pubDate>
+      <sparkle:releaseNotesLink>
+        https://github.com/martinmarsian/Wired-Server-Universal-Binary/releases/tag/v2.6.1.42
+      </sparkle:releaseNotesLink>
+      <sparkle:minimumSystemVersion>10.13</sparkle:minimumSystemVersion>
+      <enclosure
+        url="https://github.com/martinmarsian/Wired-Server-Universal-Binary/releases/download/v2.6.1.42/WiredServer-2.6.1.zip"
+        sparkle:version="42"
+        sparkle:shortVersionString="2.6.1"
+        type="application/zip"
+        length="14060500"
+        sparkle:edSignature="c7QV7uODX6Oob8VWtvIYCn3QfxjjMiiUGN2MFkGkpS7IKWoz4pvFzDMmsbB11+Me6+cSd0uSLa4lvYXVeqaXDA==" sparkle:dsaSignature="MEYCIQC/5hfTNFbsNBtUgjGRB+2xChpzG1L4Q9fpVnZOiqRzqwIhAIp17K/en2iUbbY6EZQTiTxVnijIQqcwffWfKuQBbsYt"/>
     </item>
 
   </channel>
