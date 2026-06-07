@@ -1,5 +1,19 @@
 # Wired Server — Release Notes
 
+## Version 2.6.1 (Build 42)
+
+### Bug Fixes
+
+- **Offline messages delivered before known_users list** — on login, pending offline messages were dispatched before the `wired.user.known_users` sequence completed. This caused a race condition on the client side where incoming messages arrived before the client had registered its known-users observer, resulting in the sender's offline entry not being shown. The server now sends the full `known_users` list (ending with `known_users.done`) before delivering any pending offline messages.
+
+- **Nick and status changes not persisted in offline cache** — when a logged-in user changed their nick or status, the change was broadcast to other clients but not written to the `offline_tokens` table. As a result, the updated nick or status was not included in the `known_users` list sent to users who logged in afterwards. `wd_messages_save_user_profile` is now called immediately after each nick or status broadcast.
+
+### Upgrading from 2.6.1 (Build 41)
+
+No migration required. Sparkle will offer the update automatically.
+
+---
+
 ## Version 2.6.1 (Build 41)
 
 ### Bug Fixes
